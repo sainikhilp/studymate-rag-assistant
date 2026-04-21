@@ -5,7 +5,7 @@ Compares 3 OpenAI models on your RAG setup across:
     → LLM judge (gpt-4o) runs on ALL 100 samples per model
   - Cost, Response Time, Token Usage
   - Human evaluation scores (20 samples per model, flagged via `human_eval_sample=True`)
-    → Load evaluation/model_comparison_raw.csv into human_eval.html to score
+    → Load evaluation/model_comparison_raw.csv into human_scorer.html to score
 
 Usage:
   python evaluation/evaluate_models.py           # uses up to 100 samples
@@ -60,28 +60,54 @@ Score the answer on four dimensions from 0.0 to 1.0:
 3. context_precision — Do the retrieved context chunks actually contain info needed to answer?
 4. context_recall    — Does the answer cover all important information from the context?
 
-Respond ONLY with valid JSON, no preamble:
-{"faithfulness": 0.0, "answer_relevancy": 0.0, "context_precision": 0.0, "context_recall": 0.0}"""
+You MUST respond with ONLY a raw JSON object. No markdown, no backticks, no explanation.
+Example output: {"faithfulness": 0.9, "answer_relevancy": 0.8, "context_precision": 0.7, "context_recall": 0.85}"""
 
-def judge_answer(client: OpenAI, question: str, context: list[str], answer_text: str) -> dict:
-    ctx_str = "\n---\n".join(context[:6])
-    user_msg = f"Question: {question}\n\nContexts:\n{ctx_str}\n\nAnswer:\n{answer_text}"
-    try:
-        resp = client.chat.completions.create(
-            model="gpt-4o",  # always use best model as judge
-            messages=[
-                {"role": "system", "content": JUDGE_SYSTEM},
-                {"role": "user",   "content": user_msg},
-            ],
-            temperature=0,
-            max_tokens=120,
-        )
-        raw = resp.choices[0].message.content.strip()
-        return json.loads(raw)
-    except Exception as e:
-        print(f"  ⚠️  Judge error: {e}")
-        return {"faithfulness": None, "answer_relevancy": None,
-                "context_precision": None, "context_recall": None}
+JUDGE_NULL = {"faithfulness": None, "answer_relevancy": None,
+              "context_precision": None, "context_recall": None}
+
+def _parse_judge_response(raw: str) -> dict:
+    """Strip markdown fences and parse JSON robustly."""
+    raw = raw.strip()
+    # Remove ```json ... ``` or ``` ... ``` wrappers
+    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    # Find the first { ... } block in case there's any stray text
+    start = raw.find("{")
+    end   = raw.rfind("}") + 1
+    if start == -1 or end == 0:
+        raise ValueError(f"No JSON object found in: {raw!r}")
+    return json.loads(raw[start:end])
+
+def judge_answer(client: OpenAI, question: str, context: list[str], answer_text: str,
+                 retries: int = 3) -> dict:
+    ctx_str  = "\n---\n".join(context[:6])
+    user_msg = (
+        f"Question: {question}\n\n"
+        f"Contexts:\n{ctx_str}\n\n"
+        f"Answer:\n{answer_text}\n\n"
+        f"Respond with ONLY the JSON object. No other text."
+    )
+    for attempt in range(1, retries + 1):
+        try:
+            resp = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": JUDGE_SYSTEM},
+                    {"role": "user",   "content": user_msg},
+                ],
+                temperature=0,
+                max_tokens=150,
+                response_format={"type": "json_object"},  # force JSON mode
+            )
+            raw = resp.choices[0].message.content
+            if not raw or not raw.strip():
+                raise ValueError("Empty response from judge")
+            return _parse_judge_response(raw)
+        except Exception as e:
+            if attempt == retries:
+                print(f"  ⚠️  Judge failed after {retries} attempts: {e}")
+                return JUDGE_NULL
+            time.sleep(1 * attempt)  # brief backoff before retry
 
 
 def run_rag_with_model(question: str, index, metadata, model_id: str) -> dict:
@@ -141,28 +167,26 @@ def main():
 
     df = df.head(LLM_SAMPLES).reset_index(drop=True)
 
-    # Pick 20 random indices to flag for human eval (same indices across all models)
+    # Pick 20 random positions (0-based) to flag for human eval — same across all models
     random.seed(args.seed)
     human_indices = set(random.sample(range(len(df)), min(HUMAN_SAMPLES, len(df))))
-
     print(f"✅ LLM judge  : {LLM_SAMPLES} samples per model")
     print(f"✅ Human eval : {len(human_indices)} samples per model (flagged in CSV)")
     print(f"✅ Models     : {len(MODELS)}\n")
 
-    client   = OpenAI()
+    client          = OpenAI()
     index, metadata = load_index()
-
-    all_rows = []
+    all_rows        = []
 
     for model in MODELS:
         print(f"\n{'='*60}")
         print(f"  Model: {model['label']}")
         print(f"{'='*60}")
 
-        for i, row in tqdm(df.iterrows(), total=len(df), desc=f"  Querying {model['id']}"):
-            question     = row["question"]
-            ground_truth = row["ground_truth"]
-            is_human_sample = i in human_indices
+        for pos, (_, row) in enumerate(tqdm(df.iterrows(), total=len(df), desc=f"  Querying {model['id']}")):
+            question        = row["question"]
+            ground_truth    = row["ground_truth"]
+            is_human_sample = pos in human_indices  # use pos (0-based), not df index
 
             # Parse context from CSV (stored as string repr of list)
             try:
@@ -175,7 +199,7 @@ def main():
             try:
                 rag_result = run_rag_with_model(question, index, metadata, model["id"])
             except Exception as e:
-                print(f"\n  ⚠️  RAG error on sample {i}: {e}")
+                print(f"\n  ⚠️  RAG error on sample {pos}: {e}")
                 continue
 
             answer_text   = rag_result["answer"]
@@ -195,7 +219,7 @@ def main():
                 "model_id":           model["id"],
                 "model_label":        model["label"],
                 "model_tier":         model["tier"],
-                "sample_index":       i,
+                "sample_index":       pos,
                 "question":           question,
                 "ground_truth":       ground_truth,
                 "answer":             answer_text,
@@ -245,7 +269,7 @@ def main():
     print("-" * 95)
 
     print(f"\n👤 Human eval next steps:")
-    print(f"   1. Open evaluation/human_eval.html in your browser")
+    print(f"   1. Open evaluation/human_scorer.html in your browser")
     print(f"   2. Load evaluation/model_comparison_raw.csv")
     print(f"   3. The UI will show only the {len(human_indices)} flagged samples per model")
     print(f"   4. Score each → export → save as evaluation/model_comparison_scored.csv\n")

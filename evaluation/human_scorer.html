@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG Human Evaluator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
+
+  :root {
+    --bg:       #0F0F0E;
+    --surface:  #171716;
+    --surface2: #1E1E1C;
+    --border:   #2A2A28;
+    --text:     #E8E6E0;
+    --muted:    #7A7872;
+    --accent:   #C8F060;
+    --accent2:  #F0A060;
+    --accent3:  #60C8F0;
+    --danger:   #F06060;
+    --radius:   10px;
+    --mono:     'DM Mono', monospace;
+    --sans:     'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
+
+  /* Layout */
+  .shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  .sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 24px 16px; position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+  .main { padding: 32px; max-width: 860px; }
+
+  /* Sidebar */
+  .logo { font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-section { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+  .model-pill { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px; cursor: pointer; transition: background 0.15s; }
+  .model-pill:hover { background: var(--surface2); }
+  .model-pill.active { background: var(--surface2); }
+  .tier-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .tier-low  { background: var(--accent3); }
+  .tier-mid  { background: var(--accent2); }
+  .tier-high { background: var(--accent); }
+  .model-name { font-size: 12px; font-weight: 500; flex: 1; }
+  .model-count { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .prog-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .prog-bar { flex: 1; height: 3px; background: var(--border); border-radius: 99px; overflow: hidden; }
+  .prog-fill { height: 100%; border-radius: 99px; background: var(--accent); transition: width 0.3s; }
+
+  /* Stats */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-box { background: var(--surface2); border-radius: 8px; padding: 10px 12px; }
+  .stat-val { font-family: var(--mono); font-size: 16px; font-weight: 500; }
+  .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .stat-val.green { color: var(--accent); }
+  .stat-val.orange { color: var(--accent2); }
+
+  /* Main header */
+  .page-header { margin-bottom: 28px; }
+  .page-title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+  .page-sub { font-size: 13px; color: var(--muted); }
+
+  /* Load section */
+  .load-section { background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
+  .load-section label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; }
+  .load-row { display: flex; gap: 10px; align-items: center; }
+  input[type=file] { display: none; }
+  .btn { cursor: pointer; font-family: var(--sans); font-size: 12px; font-weight: 500; padding: 8px 16px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); transition: all 0.15s; }
+  .btn:hover { border-color: var(--muted); }
+  .btn.primary { background: var(--accent); color: #0F0F0E; border-color: var(--accent); }
+  .btn.primary:hover { opacity: 0.88; }
+  .btn.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+  /* Card */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+  .card-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+  .question-text { font-size: 16px; font-weight: 500; line-height: 1.5; }
+  .answer-text { font-size: 13px; line-height: 1.7; color: #C8C4BA; }
+  .ground-truth-text { font-size: 13px; line-height: 1.6; color: var(--accent); font-family: var(--mono); }
+  .context-text { font-size: 12px; line-height: 1.6; color: var(--muted); font-family: var(--mono); max-height: 100px; overflow-y: auto; }
+
+  /* Model tabs */
+  .model-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab { padding: 6px 14px; border-radius: 99px; border: 1px solid var(--border); font-size: 12px; cursor: pointer; transition: all 0.15s; background: transparent; color: var(--muted); }
+  .tab.active { border-color: var(--accent); color: var(--accent); background: rgba(200, 240, 96, 0.08); }
+
+  /* Score */
+  .score-section { margin-top: 16px; }
+  .score-label { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
+  .star-row { display: flex; gap: 6px; margin-bottom: 12px; }
+  .star { font-size: 24px; cursor: pointer; transition: transform 0.1s; color: var(--border); }
+  .star.lit { color: var(--accent2); }
+  .star:hover { transform: scale(1.2); }
+  .notes-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; font-family: var(--sans); font-size: 12px; color: var(--text); resize: vertical; min-height: 60px; }
+  .notes-input:focus { outline: none; border-color: var(--muted); }
+  .nav-row { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
+  .sample-counter { font-family: var(--mono); font-size: 12px; color: var(--muted); flex: 1; text-align: center; }
+
+  /* Auto scores */
+  .auto-scores { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .score-chip { font-family: var(--mono); font-size: 10px; padding: 3px 8px; border-radius: 99px; background: var(--surface2); border: 1px solid var(--border); }
+  .score-chip.good { border-color: var(--accent); color: var(--accent); }
+  .score-chip.mid  { border-color: var(--accent2); color: var(--accent2); }
+  .score-chip.bad  { border-color: var(--danger); color: var(--danger); }
+
+  /* Summary table */
+  .summary-section { margin-top: 32px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: var(--surface2); color: var(--muted); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-family: var(--mono); }
+  tr:last-child td { border-bottom: none; }
+  .tier-badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; }
+  .badge-low  { background: rgba(96,200,240,0.15); color: var(--accent3); }
+  .badge-mid  { background: rgba(240,160,96,0.15); color: var(--accent2); }
+  .badge-high { background: rgba(200,240,96,0.15); color: var(--accent); }
+
+  /* Nav dots */
+  .dots { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 16px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); cursor: pointer; transition: background 0.2s; }
+  .dot.scored { background: var(--accent); }
+  .dot.current { background: var(--accent2); }
+
+  /* Export */
+  .export-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 20px; }
+  pre { font-size: 11px; background: var(--surface2); border-radius: 7px; padding: 12px; overflow-x: auto; max-height: 200px; color: var(--muted); }
+
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">RAG Evaluator</div>
+
+    <div>
+      <div class="sidebar-section">Models</div>
+      <div id="model-list"></div>
+    </div>
+
+    <div>
+      <div class="sidebar-section">Progress</div>
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-val green" id="sb-scored">0</div><div class="stat-lbl">Scored</div></div>
+        <div class="stat-box"><div class="stat-val" id="sb-total">0</div><div class="stat-lbl">Total</div></div>
+        <div class="stat-box"><div class="stat-val orange" id="sb-avg">—</div><div class="stat-lbl">Avg Score</div></div>
+        <div class="stat-box"><div class="stat-val" id="sb-models">0</div><div class="stat-lbl">Models</div></div>
+      </div>
+    </div>
+
+    <div style="margin-top:auto;">
+      <button class="btn primary" style="width:100%;margin-bottom:8px;" onclick="exportCSV()">Export CSV</button>
+      <button class="btn" style="width:100%;" onclick="showSummary()">View Summary</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="page-header">
+      <div class="page-title">Human Evaluation</div>
+      <div class="page-sub">Score 20 flagged responses per model — LLM judge already ran on all 100</div>
+    </div>
+
+    <!-- Load -->
+    <div class="load-section">
+      <label>Load model_comparison_raw.csv from evaluation/</label>
+      <div class="load-row">
+        <button class="btn" onclick="document.getElementById('csv-file').click()">📂 Load CSV</button>
+        <input type="file" id="csv-file" accept=".csv" onchange="loadCSV(event)">
+        <span id="load-status" style="font-size:12px;color:var(--muted);">No file loaded</span>
+      </div>
+    </div>
+
+    <!-- Eval area -->
+    <div id="eval-area">
+      <div class="empty-state">
+        <div class="empty-icon">📋</div>
+        <div>Load a CSV to start scoring</div>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div id="summary-area" class="summary-section" style="display:none;"></div>
+
+    <!-- Export -->
+    <div id="export-area" class="export-section" style="display:none;">
+      <div class="card-label">Export — paste into evaluation/model_comparison_scored.csv</div>
+      <pre id="csv-preview"></pre>
+      <button class="btn primary" style="margin-top:10px;" onclick="copyExport()">Copy CSV</button>
+      <button class="btn" style="margin-top:10px;margin-left:8px;" onclick="downloadExport()">Download</button>
+    </div>
+  </main>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let allRows   = [];   // parsed CSV rows
+let scores    = {};   // { rowIndex: { stars, notes } }
+let models    = [];   // unique model ids
+let activeModel = null;
+let sampleIdx  = 0;   // within current model's rows
+
+// ── CSV Parser ────────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines  = text.trim().split('\n');
+  const header = parseCSVLine(lines[0]);
+  return lines.slice(1).filter(l => l.trim()).map(l => {
+    const vals = parseCSVLine(l);
+    const obj  = {};
+    header.forEach((h, i) => obj[h.trim()] = (vals[i] || '').trim());
+    return obj;
+  });
+}
+function parseCSVLine(line) {
+  const res = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"' && !inQ)                        { inQ = true; }
+    else if (c === '"' && inQ && line[i+1]==='"') { cur += '"'; i++; }
+    else if (c === '"' && inQ)                    { inQ = false; }
+    else if (c === ',' && !inQ)                   { res.push(cur); cur = ''; }
+    else cur += c;
+  }
+  res.push(cur); return res;
+}
+
+// ── Load ──────────────────────────────────────────────────────────────────────
+function loadCSV(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    allRows = parseCSV(e.target.result);
+    scores  = {};
+    // Pre-fill existing human scores
+    allRows.forEach((r, i) => {
+      if (r.human_score) scores[i] = { stars: parseFloat(r.human_score), notes: r.human_notes || '' };
+    });
+    models      = [...new Set(allRows.map(r => r.model_id))];
+    activeModel = models[0];
+    sampleIdx   = 0;
+    document.getElementById('load-status').textContent =
+      `${allRows.length} rows loaded  ·  ${allRows.filter(r=>r.human_eval_sample==='True').length} flagged for human eval`;
+    render();
+  };
+  reader.readAsText(file);
+}
+
+// ── Model rows helper ─────────────────────────────────────────────────────────
+function modelRows(mid) {
+  return allRows
+    .map((r,i) => ({...r, _i:i}))
+    .filter(r => r.model_id === mid && r.human_eval_sample === 'True');
+}
+
+// ── Render all ────────────────────────────────────────────────────────────────
+function render() {
+  renderSidebar();
+  renderEval();
+  renderStats();
+}
+
+function renderSidebar() {
+  const el = document.getElementById('model-list');
+  el.innerHTML = '';
+  const tiers = { low:'tier-low', mid:'tier-mid', high:'tier-high' };
+  models.forEach(mid => {
+    const rows   = modelRows(mid);
+    const done   = rows.filter(r => scores[r._i]?.stars).length;
+    const pct    = rows.length ? Math.round(done/rows.length*100) : 0;
+    const sample = allRows.find(r=>r.model_id===mid);
+    const tier   = sample?.model_tier || 'mid';
+    const label  = sample?.model_label || mid;
+
+    const d = document.createElement('div');
+    d.className = 'model-pill' + (mid===activeModel?' active':'');
+    d.onclick = () => { activeModel = mid; sampleIdx = 0; render(); };
+    d.innerHTML = `
+      <div class="tier-dot ${tiers[tier]||'tier-mid'}"></div>
+      <div class="model-name">${label.split('(')[0].trim()}</div>
+      <div class="model-count">${done}/${rows.length}</div>
+    `;
+    const pb = document.createElement('div');
+    pb.innerHTML = `<div class="prog-row"><div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></div>`;
+    el.appendChild(d);
+    el.appendChild(pb);
+  });
+}
+
+function renderStats() {
+  const scored = Object.keys(scores).length;
+  const total  = allRows.length;
+  const avg    = scored ? (Object.values(scores).reduce((a,b)=>a+(b.stars||0),0)/scored).toFixed(1) : '—';
+  document.getElementById('sb-scored').textContent = scored;
+  document.getElementById('sb-total').textContent  = total;
+  document.getElementById('sb-avg').textContent    = avg;
+  document.getElementById('sb-models').textContent = models.length;
+}
+
+function renderEval() {
+  const rows = modelRows(activeModel);
+  if (!rows.length) return;
+  const sample = rows[sampleIdx] || rows[0];
+  const ri     = sample._i;
+
+  // dots
+  const dotsHtml = rows.map((r,i) =>
+    `<div class="dot ${scores[r._i]?.stars?'scored':''} ${i===sampleIdx?'current':''}"
+      onclick="sampleIdx=${i};render()"></div>`).join('');
+
+  // auto scores chips
+  const chipClass = v => !v ? '' : v >= 0.7 ? 'good' : v >= 0.4 ? 'mid' : 'bad';
+  const metrics   = ['faithfulness','answer_relevancy','context_precision','context_recall'];
+  const chipsHtml = metrics.map(m => {
+    const v = parseFloat(sample[m]);
+    return isNaN(v) ? '' :
+      `<span class="score-chip ${chipClass(v)}">${m.replace('_',' ')}: ${v.toFixed(2)}</span>`;
+  }).join('');
+
+  // stars
+  const cur = scores[ri] || { stars: 0, notes: '' };
+  const starsHtml = [1,2,3,4,5].map(n =>
+    `<span class="star ${n<=cur.stars?'lit':''}" onclick="setStar(${ri},${n})">★</span>`).join('');
+
+  document.getElementById('eval-area').innerHTML = `
+    <div class="model-tabs">
+      ${models.map(m => `<button class="tab ${m===activeModel?'active':''}" onclick="activeModel='${m}';sampleIdx=0;render()">${allRows.find(r=>r.model_id===m)?.model_label||m}</button>`).join('')}
+    </div>
+
+    <div class="dots">${dotsHtml}</div>
+
+    <div class="card">
+      <div class="card-label">Question &nbsp;·&nbsp; ${sampleIdx+1} of ${rows.length}</div>
+      <div class="question-text">${esc(sample.question)}</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">RAG Answer — <em>${esc(sample.model_label||sample.model_id)}</em></div>
+      <div class="answer-text">${esc(sample.answer)}</div>
+      <div style="margin-top:10px;">
+        <div class="card-label">Auto eval scores</div>
+        <div class="auto-scores">${chipsHtml || '<span style="color:var(--muted);font-size:11px;">none</span>'}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Ground Truth</div>
+      <div class="ground-truth-text">${esc(sample.ground_truth)}</div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">Context (retrieved chunk)</div>
+      <div class="context-text">${esc(sample.contexts||'—')}</div>
+    </div>
+
+    <div class="card score-section">
+      <div class="score-label">Your score (1 = poor, 5 = excellent)</div>
+      <div class="star-row">${starsHtml}</div>
+      <textarea class="notes-input" id="notes-${ri}" placeholder="Optional notes…" onchange="setNotes(${ri},this.value)">${esc(cur.notes)}</textarea>
+      <div class="nav-row">
+        <button class="btn" onclick="navSample(-1)" ${sampleIdx===0?'disabled':''}>← Prev</button>
+        <div class="sample-counter">${Object.keys(scores).filter(k=>modelRows(activeModel).some(r=>r._i==k)).length} / ${rows.length} scored</div>
+        <button class="btn primary" onclick="saveAndNext(${ri})">Save & Next →</button>
+      </div>
+    </div>
+  `;
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+function setStar(ri, n) {
+  if (!scores[ri]) scores[ri] = { stars: 0, notes: '' };
+  scores[ri].stars = n;
+  render();
+}
+function setNotes(ri, val) {
+  if (!scores[ri]) scores[ri] = { stars: 0, notes: '' };
+  scores[ri].notes = val;
+}
+function saveAndNext(ri) {
+  const el = document.getElementById(`notes-${ri}`);
+  if (el) setNotes(ri, el.value);
+  navSample(1);
+}
+function navSample(d) {
+  const rows = modelRows(activeModel);
+  sampleIdx  = Math.max(0, Math.min(rows.length-1, sampleIdx+d));
+  render();
+}
+
+// ── Summary ───────────────────────────────────────────────────────────────────
+function showSummary() {
+  const sa = document.getElementById('summary-area');
+  sa.style.display = 'block';
+
+  const autoMetrics = ['faithfulness','answer_relevancy','context_precision','context_recall'];
+  const rows = models.map(mid => {
+    const mrows  = modelRows(mid);
+    const label  = allRows.find(r=>r.model_id===mid)?.model_label || mid;
+    const tier   = allRows.find(r=>r.model_id===mid)?.model_tier  || 'mid';
+    const scored = mrows.filter(r=>scores[r._i]?.stars);
+    const humanAvg = scored.length ? (scored.reduce((a,r)=>a+(scores[r._i]?.stars||0),0)/scored.length).toFixed(2) : '—';
+    const cost   = mrows.reduce((a,r)=>a+parseFloat(r.cost_usd||0),0).toFixed(4);
+    const rt     = mrows.length ? (mrows.reduce((a,r)=>a+parseFloat(r.response_time_s||0),0)/mrows.length).toFixed(2) : '—';
+    const auto   = autoMetrics.map(m => {
+      const v = mrows.map(r=>parseFloat(r[m])).filter(v=>!isNaN(v));
+      return v.length ? (v.reduce((a,b)=>a+b,0)/v.length).toFixed(3) : '—';
+    });
+    return { mid, label, tier, humanAvg, cost, rt, auto, scored: scored.length, total: mrows.length };
+  });
+
+  const tierBadge = t => `<span class="tier-badge badge-${t}">${t}</span>`;
+  sa.innerHTML = `
+    <div class="card-label" style="margin-bottom:16px;">Summary</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th><th>Tier</th><th>Human ★</th><th>Faithf.</th><th>Relev.</th><th>Ctx Prec.</th><th>Ctx Rec.</th><th>Avg RT</th><th>Total Cost</th><th>Scored</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r=>`<tr>
+          <td>${r.label}</td>
+          <td>${tierBadge(r.tier)}</td>
+          <td>${r.humanAvg}</td>
+          <td>${r.auto[0]}</td><td>${r.auto[1]}</td><td>${r.auto[2]}</td><td>${r.auto[3]}</td>
+          <td>${r.rt}s</td>
+          <td>$${r.cost}</td>
+          <td>${r.scored}/${r.total}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function exportCSV() {
+  const cols = Object.keys(allRows[0]||{}).filter(k=>k!=='human_score'&&k!=='human_notes');
+  cols.push('human_score','human_notes');
+  const esc2 = v => `"${String(v||'').replace(/"/g,'""')}"`;
+  const lines = [cols.join(','), ...allRows.map((r,i) => {
+    const s = scores[i];
+    return cols.map(c => {
+      if (c==='human_score') return esc2(s?.stars||'');
+      if (c==='human_notes') return esc2(s?.notes||'');
+      return esc2(r[c]);
+    }).join(',');
+  })];
+  const csv = lines.join('\n');
+  document.getElementById('csv-preview').textContent = csv.slice(0,1500)+(csv.length>1500?'\n…':'');
+  document.getElementById('export-area').style.display = 'block';
+  window._exportCSV = csv;
+  document.getElementById('export-area').scrollIntoView({behavior:'smooth'});
+}
+function copyExport()     { navigator.clipboard.writeText(window._exportCSV); }
+function downloadExport() {
+  const blob = new Blob([window._exportCSV],{type:'text/csv'});
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'model_comparison_scored.csv';
+  a.click();
+}
+</script>
+</body>
+</html>
