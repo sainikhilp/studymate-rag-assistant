@@ -5,7 +5,7 @@ Compares 3 OpenAI models on your RAG setup across:
     → LLM judge (gpt-4o) runs on ALL 100 samples per model
   - Cost, Response Time, Token Usage
   - Human evaluation scores (20 samples per model, flagged via `human_eval_sample=True`)
-    → Load evaluation/model_comparison_raw.csv into human_scorer.html to score
+    → Load evaluation/model_comparison_raw.csv into human_eval.html to score
 
 Usage:
   python evaluation/evaluate_models.py           # uses up to 100 samples
@@ -209,7 +209,7 @@ def main():
             cost          = compute_cost(model, input_tok, output_tok)
 
             # Build context from RAG sources (prefer live retrieval over CSV)
-            live_ctx = [s["chunk_text"] for s in rag_result["sources"] if "chunk_text" in s]
+            live_ctx = [s["document"] for s in rag_result["sources"] if "document" in s]
             context  = live_ctx if live_ctx else csv_ctx
 
             # Auto-evaluate with judge LLM
@@ -269,7 +269,7 @@ def main():
     print("-" * 95)
 
     print(f"\n👤 Human eval next steps:")
-    print(f"   1. Open evaluation/human_scorer.html in your browser")
+    print(f"   1. Open evaluation/human_eval.html in your browser")
     print(f"   2. Load evaluation/model_comparison_raw.csv")
     print(f"   3. The UI will show only the {len(human_indices)} flagged samples per model")
     print(f"   4. Score each → export → save as evaluation/model_comparison_scored.csv\n")

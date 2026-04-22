@@ -5,463 +5,566 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>RAG Human Evaluator</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 
-  :root {
-    --bg:       #0F0F0E;
-    --surface:  #171716;
-    --surface2: #1E1E1C;
-    --border:   #2A2A28;
-    --text:     #E8E6E0;
-    --muted:    #7A7872;
-    --accent:   #C8F060;
-    --accent2:  #F0A060;
-    --accent3:  #60C8F0;
-    --danger:   #F06060;
-    --radius:   10px;
-    --mono:     'DM Mono', monospace;
-    --sans:     'DM Sans', sans-serif;
-  }
+:root {
+  --bg: #F7F6F3;
+  --surface: #FFFFFF;
+  --surface2: #F0EEE9;
+  --border: #E2DDD6;
+  --border2: #CCC8C0;
+  --text: #1A1917;
+  --text2: #6B6760;
+  --text3: #9B9893;
+  --accent: #2563EB;
+  --accent-bg: #EFF6FF;
+  --green: #16A34A;
+  --green-bg: #F0FDF4;
+  --amber: #D97706;
+  --amber-bg: #FFFBEB;
+  --red: #DC2626;
+  --red-bg: #FEF2F2;
+  --star-off: #D1CEC8;
+  --star-on: #F59E0B;
+  --radius: 10px;
+  --sans: 'Inter', sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
+.shell { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
 
-  /* Layout */
-  .shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
-  .sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 24px 16px; position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
-  .main { padding: 32px; max-width: 860px; }
+/* Sidebar */
+.sidebar { background: var(--surface); border-right: 1px solid var(--border); padding: 24px 18px; position: sticky; top: 0; height: 100vh; overflow-y: auto; display: flex; flex-direction: column; gap: 22px; }
+.sidebar-logo { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
+.sidebar-divider { height: 1px; background: var(--border); }
+.sec-title { font-size: 10px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
+.model-item { border-radius: 8px; overflow: hidden; margin-bottom: 6px; cursor: pointer; transition: background 0.12s; }
+.model-item:hover { background: var(--surface2); }
+.model-item.active { background: var(--accent-bg); }
+.model-header { display: flex; align-items: center; gap: 9px; padding: 9px 10px; }
+.tier-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.tier-low { background:#60A5FA; } .tier-mid { background:#F59E0B; } .tier-high { background:#22C55E; }
+.model-label { font-size: 12px; font-weight: 500; flex: 1; line-height: 1.3; }
+.model-badge { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+.model-prog { height: 3px; background: var(--border); margin: 0 10px 8px; border-radius: 99px; overflow: hidden; }
+.model-prog-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.3s; }
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat-box { background: var(--surface2); border-radius: 8px; padding: 10px 12px; }
+.stat-val { font-family: var(--mono); font-size: 18px; font-weight: 500; }
+.stat-lbl { font-size: 10px; color: var(--text3); margin-top: 2px; }
+.c-accent { color: var(--accent); } .c-amber { color: var(--amber); }
+.sidebar-actions { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
 
-  /* Sidebar */
-  .logo { font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-  .sidebar-section { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
-  .model-pill { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px; cursor: pointer; transition: background 0.15s; }
-  .model-pill:hover { background: var(--surface2); }
-  .model-pill.active { background: var(--surface2); }
-  .tier-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .tier-low  { background: var(--accent3); }
-  .tier-mid  { background: var(--accent2); }
-  .tier-high { background: var(--accent); }
-  .model-name { font-size: 12px; font-weight: 500; flex: 1; }
-  .model-count { font-family: var(--mono); font-size: 10px; color: var(--muted); }
-  .prog-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-  .prog-bar { flex: 1; height: 3px; background: var(--border); border-radius: 99px; overflow: hidden; }
-  .prog-fill { height: 100%; border-radius: 99px; background: var(--accent); transition: width 0.3s; }
+/* Buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; font-family: var(--sans); font-size: 13px; font-weight: 500; padding: 9px 18px; border-radius: 8px; border: 1px solid var(--border2); background: var(--surface); color: var(--text); transition: all 0.12s; white-space: nowrap; }
+.btn:hover { background: var(--surface2); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.38; cursor: not-allowed; }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: #1D4ED8; }
+.btn-block { width: 100%; }
+.btn-sm { font-size: 12px; padding: 7px 14px; }
 
-  /* Stats */
-  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .stat-box { background: var(--surface2); border-radius: 8px; padding: 10px 12px; }
-  .stat-val { font-family: var(--mono); font-size: 16px; font-weight: 500; }
-  .stat-lbl { font-size: 10px; color: var(--muted); margin-top: 2px; }
-  .stat-val.green { color: var(--accent); }
-  .stat-val.orange { color: var(--accent2); }
+/* Main */
+.main { padding: 36px 40px; max-width: 900px; }
+.topbar { margin-bottom: 28px; }
+.topbar-title { font-size: 20px; font-weight: 600; }
+.topbar-sub { font-size: 13px; color: var(--text2); margin-top: 3px; }
 
-  /* Main header */
-  .page-header { margin-bottom: 28px; }
-  .page-title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
-  .page-sub { font-size: 13px; color: var(--muted); }
+/* Load zone */
+.load-zone { border: 2px dashed var(--border2); border-radius: var(--radius); padding: 28px; text-align: center; margin-bottom: 28px; cursor: pointer; transition: all 0.15s; }
+.load-zone:hover { border-color: var(--accent); background: var(--accent-bg); }
+.load-zone.loaded { border-color: var(--green); border-style: solid; background: var(--green-bg); }
+.load-zone-icon { font-size: 28px; margin-bottom: 8px; }
+.load-zone-text { font-size: 13px; font-weight: 500; color: var(--text2); }
+.load-zone-sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+.load-status { font-family: var(--mono); font-size: 11px; color: var(--green); margin-top: 8px; }
 
-  /* Load section */
-  .load-section { background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 24px; }
-  .load-section label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; }
-  .load-row { display: flex; gap: 10px; align-items: center; }
-  input[type=file] { display: none; }
-  .btn { cursor: pointer; font-family: var(--sans); font-size: 12px; font-weight: 500; padding: 8px 16px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); transition: all 0.15s; }
-  .btn:hover { border-color: var(--muted); }
-  .btn.primary { background: var(--accent); color: #0F0F0E; border-color: var(--accent); }
-  .btn.primary:hover { opacity: 0.88; }
-  .btn.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+/* Model tabs */
+.model-tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+.mtab { padding: 7px 16px; border-radius: 99px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1.5px solid var(--border); background: transparent; color: var(--text2); transition: all 0.12s; }
+.mtab:hover { border-color: var(--border2); color: var(--text); }
+.mtab.active { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
 
-  /* Card */
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
-  .card-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
-  .question-text { font-size: 16px; font-weight: 500; line-height: 1.5; }
-  .answer-text { font-size: 13px; line-height: 1.7; color: #C8C4BA; }
-  .ground-truth-text { font-size: 13px; line-height: 1.6; color: var(--accent); font-family: var(--mono); }
-  .context-text { font-size: 12px; line-height: 1.6; color: var(--muted); font-family: var(--mono); max-height: 100px; overflow-y: auto; }
+/* Dots */
+.dots-row { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 20px; }
+.dot { width: 28px; height: 28px; border-radius: 7px; font-family: var(--mono); font-size: 10px; font-weight: 500; display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1.5px solid var(--border); background: var(--surface); color: var(--text3); transition: all 0.12s; }
+.dot:hover { border-color: var(--border2); color: var(--text); }
+.dot.scored { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+.dot.current { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-  /* Model tabs */
-  .model-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
-  .tab { padding: 6px 14px; border-radius: 99px; border: 1px solid var(--border); font-size: 12px; cursor: pointer; transition: all 0.15s; background: transparent; color: var(--muted); }
-  .tab.active { border-color: var(--accent); color: var(--accent); background: rgba(200, 240, 96, 0.08); }
+/* Cards */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+.card-hdr { padding: 11px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--surface2); }
+.card-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text3); }
+.card-body { padding: 18px; }
 
-  /* Score */
-  .score-section { margin-top: 16px; }
-  .score-label { font-size: 11px; color: var(--muted); margin-bottom: 10px; }
-  .star-row { display: flex; gap: 6px; margin-bottom: 12px; }
-  .star { font-size: 24px; cursor: pointer; transition: transform 0.1s; color: var(--border); }
-  .star.lit { color: var(--accent2); }
-  .star:hover { transform: scale(1.2); }
-  .notes-input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; font-family: var(--sans); font-size: 12px; color: var(--text); resize: vertical; min-height: 60px; }
-  .notes-input:focus { outline: none; border-color: var(--muted); }
-  .nav-row { display: flex; gap: 10px; align-items: center; margin-top: 16px; }
-  .sample-counter { font-family: var(--mono); font-size: 12px; color: var(--muted); flex: 1; text-align: center; }
+.question-text { font-size: 17px; font-weight: 600; line-height: 1.55; }
+.answer-text { font-size: 14px; line-height: 1.8; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.gt-text { font-size: 13px; line-height: 1.65; color: var(--green); background: var(--green-bg); border-radius: 7px; padding: 12px 14px; font-weight: 500; }
 
-  /* Auto scores */
-  .auto-scores { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-  .score-chip { font-family: var(--mono); font-size: 10px; padding: 3px 8px; border-radius: 99px; background: var(--surface2); border: 1px solid var(--border); }
-  .score-chip.good { border-color: var(--accent); color: var(--accent); }
-  .score-chip.mid  { border-color: var(--accent2); color: var(--accent2); }
-  .score-chip.bad  { border-color: var(--danger); color: var(--danger); }
+/* Chips */
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.chip { font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 6px; font-weight: 500; }
+.chip-good { background: var(--green-bg); color: var(--green); }
+.chip-mid  { background: var(--amber-bg); color: var(--amber); }
+.chip-bad  { background: var(--red-bg); color: var(--red); }
+.chip-na   { background: var(--surface2); color: var(--text3); }
 
-  /* Summary table */
-  .summary-section { margin-top: 32px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { background: var(--surface2); color: var(--muted); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-  td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-family: var(--mono); }
-  tr:last-child td { border-bottom: none; }
-  .tier-badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; }
-  .badge-low  { background: rgba(96,200,240,0.15); color: var(--accent3); }
-  .badge-mid  { background: rgba(240,160,96,0.15); color: var(--accent2); }
-  .badge-high { background: rgba(200,240,96,0.15); color: var(--accent); }
+/* Context chunks */
+.chunks { display: flex; flex-direction: column; gap: 10px; }
+.chunk { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.chunk-meta { background: var(--surface2); padding: 7px 12px; display: flex; align-items: center; gap: 8px; }
+.chunk-num { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--accent); }
+.chunk-src { font-family: var(--mono); font-size: 10px; color: var(--text3); }
+.chunk-body { padding: 12px 14px; font-size: 12px; line-height: 1.7; color: var(--text2); font-family: var(--mono); max-height: 160px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
 
-  /* Nav dots */
-  .dots { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 16px; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); cursor: pointer; transition: background 0.2s; }
-  .dot.scored { background: var(--accent); }
-  .dot.current { background: var(--accent2); }
+/* Score card */
+.score-card { background: var(--surface); border: 2px solid var(--border); border-radius: var(--radius); padding: 24px; margin-bottom: 12px; transition: border-color 0.2s; }
+.score-card.has-score { border-color: var(--green); }
+.score-heading { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.score-sub { font-size: 12px; color: var(--text3); margin-bottom: 18px; }
 
-  /* Export */
-  .export-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 20px; }
-  pre { font-size: 11px; background: var(--surface2); border-radius: 7px; padding: 12px; overflow-x: auto; max-height: 200px; color: var(--muted); }
+/* Stars */
+.stars-wrap { margin-bottom: 6px; }
+.stars-row { display: flex; gap: 4px; }
+.star-btn { background: none; border: none; cursor: pointer; font-size: 36px; line-height: 1; color: var(--star-off); transition: color 0.1s, transform 0.1s; padding: 2px 3px; user-select: none; }
+.star-btn:hover { transform: scale(1.18); }
+.star-btn.lit { color: var(--star-on); }
+.star-btn.hov { color: #FCD34D; }
+.star-labels-row { display: flex; justify-content: space-between; padding: 0 4px; margin-bottom: 16px; }
+.star-lbl { font-size: 10px; color: var(--text3); }
 
-  .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
-  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+.score-confirm { display: none; align-items: center; gap: 8px; padding: 9px 14px; background: var(--green-bg); border: 1px solid #86EFAC; border-radius: 7px; margin-bottom: 16px; }
+.score-confirm.show { display: flex; }
+.score-confirm-text { font-size: 13px; font-weight: 600; color: var(--green); }
+
+.notes-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); margin-bottom: 6px; }
+textarea.notes { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; font-family: var(--sans); font-size: 13px; color: var(--text); resize: vertical; min-height: 72px; line-height: 1.55; }
+textarea.notes:focus { outline: none; border-color: var(--accent); }
+
+.nav-row { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.nav-ctr { flex: 1; text-align: center; font-family: var(--mono); font-size: 12px; color: var(--text3); }
+
+/* Summary */
+.summary-wrap { margin-top: 28px; padding: 24px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.summary-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead th { background: var(--surface2); color: var(--text3); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tbody td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-family: var(--mono); }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: var(--surface2); }
+.tp { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.tp-low { background:#DBEAFE; color:#1D4ED8; } .tp-mid { background:#FEF3C7; color:#B45309; } .tp-high { background:#DCFCE7; color:#15803D; }
+
+/* Export */
+.export-wrap { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+.export-title { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.export-pre { font-family: var(--mono); font-size: 11px; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 12px; overflow-x: auto; max-height: 180px; overflow-y: auto; color: var(--text2); white-space: pre; margin-bottom: 12px; }
+.export-btns { display: flex; gap: 8px; }
+
+.empty { text-align: center; padding: 60px 20px; color: var(--text3); }
+.empty-icon { font-size: 44px; margin-bottom: 12px; }
+.empty-title { font-size: 15px; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+
+.toast { position: fixed; bottom: 24px; right: 24px; background: #1A1917; color: #F7F6F3; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 500; opacity: 0; transform: translateY(6px); transition: opacity 0.2s, transform 0.2s; pointer-events: none; z-index: 9999; }
+.toast.show { opacity: 1; transform: translateY(0); }
 </style>
 </head>
 <body>
 <div class="shell">
+
   <!-- Sidebar -->
   <aside class="sidebar">
-    <div class="logo">RAG Evaluator</div>
-
+    <div class="sidebar-logo">RAG Eval</div>
+    <div class="sidebar-divider"></div>
     <div>
-      <div class="sidebar-section">Models</div>
+      <div class="sec-title">Models</div>
       <div id="model-list"></div>
     </div>
-
     <div>
-      <div class="sidebar-section">Progress</div>
-      <div class="stat-grid">
-        <div class="stat-box"><div class="stat-val green" id="sb-scored">0</div><div class="stat-lbl">Scored</div></div>
-        <div class="stat-box"><div class="stat-val" id="sb-total">0</div><div class="stat-lbl">Total</div></div>
-        <div class="stat-box"><div class="stat-val orange" id="sb-avg">—</div><div class="stat-lbl">Avg Score</div></div>
+      <div class="sec-title">Progress</div>
+      <div class="stats-grid">
+        <div class="stat-box"><div class="stat-val c-accent" id="sb-scored">0</div><div class="stat-lbl">Scored</div></div>
+        <div class="stat-box"><div class="stat-val" id="sb-total">0</div><div class="stat-lbl">Flagged</div></div>
+        <div class="stat-box"><div class="stat-val c-amber" id="sb-avg">—</div><div class="stat-lbl">Avg ★</div></div>
         <div class="stat-box"><div class="stat-val" id="sb-models">0</div><div class="stat-lbl">Models</div></div>
       </div>
     </div>
-
-    <div style="margin-top:auto;">
-      <button class="btn primary" style="width:100%;margin-bottom:8px;" onclick="exportCSV()">Export CSV</button>
-      <button class="btn" style="width:100%;" onclick="showSummary()">View Summary</button>
+    <div class="sidebar-actions">
+      <button class="btn btn-primary btn-block" onclick="showSummary()">📊 View Summary</button>
+      <button class="btn btn-block" onclick="exportCSV()">⬇ Export CSV</button>
     </div>
   </aside>
 
   <!-- Main -->
   <main class="main">
-    <div class="page-header">
-      <div class="page-title">Human Evaluation</div>
-      <div class="page-sub">Score 20 flagged responses per model — LLM judge already ran on all 100</div>
+    <div class="topbar">
+      <div class="topbar-title">Human Evaluation</div>
+      <div class="topbar-sub">Rate 20 flagged responses per model · LLM judge scored all 100</div>
     </div>
 
-    <!-- Load -->
-    <div class="load-section">
-      <label>Load model_comparison_raw.csv from evaluation/</label>
-      <div class="load-row">
-        <button class="btn" onclick="document.getElementById('csv-file').click()">📂 Load CSV</button>
-        <input type="file" id="csv-file" accept=".csv" onchange="loadCSV(event)">
-        <span id="load-status" style="font-size:12px;color:var(--muted);">No file loaded</span>
-      </div>
+    <div class="load-zone" id="load-zone" onclick="document.getElementById('csv-in').click()">
+      <input type="file" id="csv-in" accept=".csv" onchange="loadCSV(event)" style="display:none">
+      <div class="load-zone-icon">📂</div>
+      <div class="load-zone-text">Click to load model_comparison_raw.csv</div>
+      <div class="load-zone-sub">From your evaluation/ folder</div>
+      <div class="load-status" id="load-status"></div>
     </div>
 
-    <!-- Eval area -->
     <div id="eval-area">
-      <div class="empty-state">
-        <div class="empty-icon">📋</div>
-        <div>Load a CSV to start scoring</div>
+      <div class="empty">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-title">No data loaded</div>
+        <div>Load your CSV above to start rating</div>
       </div>
     </div>
 
-    <!-- Summary -->
-    <div id="summary-area" class="summary-section" style="display:none;"></div>
-
-    <!-- Export -->
-    <div id="export-area" class="export-section" style="display:none;">
-      <div class="card-label">Export — paste into evaluation/model_comparison_scored.csv</div>
-      <pre id="csv-preview"></pre>
-      <button class="btn primary" style="margin-top:10px;" onclick="copyExport()">Copy CSV</button>
-      <button class="btn" style="margin-top:10px;margin-left:8px;" onclick="downloadExport()">Download</button>
+    <div id="summary-area"></div>
+    <div id="export-area" style="display:none" class="export-wrap">
+      <div class="export-title">CSV Export — save as evaluation/model_comparison_scored.csv</div>
+      <div class="export-pre" id="csv-pre"></div>
+      <div class="export-btns">
+        <button class="btn btn-sm" onclick="copyExport()">Copy</button>
+        <button class="btn btn-primary btn-sm" onclick="dlExport()">Download CSV</button>
+      </div>
     </div>
   </main>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <script>
-// ── State ────────────────────────────────────────────────────────────────────
-let allRows   = [];   // parsed CSV rows
-let scores    = {};   // { rowIndex: { stars, notes } }
-let models    = [];   // unique model ids
-let activeModel = null;
-let sampleIdx  = 0;   // within current model's rows
+let allRows=[], scores={}, models=[], activeModel=null, sampleIdx=0;
 
-// ── CSV Parser ────────────────────────────────────────────────────────────────
-function parseCSV(text) {
-  const lines  = text.trim().split('\n');
-  const header = parseCSVLine(lines[0]);
-  return lines.slice(1).filter(l => l.trim()).map(l => {
-    const vals = parseCSVLine(l);
-    const obj  = {};
-    header.forEach((h, i) => obj[h.trim()] = (vals[i] || '').trim());
-    return obj;
-  });
-}
-function parseCSVLine(line) {
-  const res = []; let cur = ''; let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (c === '"' && !inQ)                        { inQ = true; }
-    else if (c === '"' && inQ && line[i+1]==='"') { cur += '"'; i++; }
-    else if (c === '"' && inQ)                    { inQ = false; }
-    else if (c === ',' && !inQ)                   { res.push(cur); cur = ''; }
-    else cur += c;
+function parseCSVLine(l){
+  const res=[];let cur='',inQ=false;
+  for(let i=0;i<l.length;i++){
+    const c=l[i];
+    if(c==='"'&&!inQ)inQ=true;
+    else if(c==='"'&&inQ&&l[i+1]==='"'){cur+='"';i++;}
+    else if(c==='"'&&inQ)inQ=false;
+    else if(c===','&&!inQ){res.push(cur);cur='';}
+    else cur+=c;
   }
-  res.push(cur); return res;
+  res.push(cur);return res;
 }
-
-// ── Load ──────────────────────────────────────────────────────────────────────
-function loadCSV(evt) {
-  const file = evt.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    allRows = parseCSV(e.target.result);
-    scores  = {};
-    // Pre-fill existing human scores
-    allRows.forEach((r, i) => {
-      if (r.human_score) scores[i] = { stars: parseFloat(r.human_score), notes: r.human_notes || '' };
-    });
-    models      = [...new Set(allRows.map(r => r.model_id))];
-    activeModel = models[0];
-    sampleIdx   = 0;
-    document.getElementById('load-status').textContent =
-      `${allRows.length} rows loaded  ·  ${allRows.filter(r=>r.human_eval_sample==='True').length} flagged for human eval`;
-    render();
-  };
-  reader.readAsText(file);
-}
-
-// ── Model rows helper ─────────────────────────────────────────────────────────
-function modelRows(mid) {
-  return allRows
-    .map((r,i) => ({...r, _i:i}))
-    .filter(r => r.model_id === mid && r.human_eval_sample === 'True');
-}
-
-// ── Render all ────────────────────────────────────────────────────────────────
-function render() {
-  renderSidebar();
-  renderEval();
-  renderStats();
-}
-
-function renderSidebar() {
-  const el = document.getElementById('model-list');
-  el.innerHTML = '';
-  const tiers = { low:'tier-low', mid:'tier-mid', high:'tier-high' };
-  models.forEach(mid => {
-    const rows   = modelRows(mid);
-    const done   = rows.filter(r => scores[r._i]?.stars).length;
-    const pct    = rows.length ? Math.round(done/rows.length*100) : 0;
-    const sample = allRows.find(r=>r.model_id===mid);
-    const tier   = sample?.model_tier || 'mid';
-    const label  = sample?.model_label || mid;
-
-    const d = document.createElement('div');
-    d.className = 'model-pill' + (mid===activeModel?' active':'');
-    d.onclick = () => { activeModel = mid; sampleIdx = 0; render(); };
-    d.innerHTML = `
-      <div class="tier-dot ${tiers[tier]||'tier-mid'}"></div>
-      <div class="model-name">${label.split('(')[0].trim()}</div>
-      <div class="model-count">${done}/${rows.length}</div>
-    `;
-    const pb = document.createElement('div');
-    pb.innerHTML = `<div class="prog-row"><div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></div>`;
-    el.appendChild(d);
-    el.appendChild(pb);
+function parseCSV(text){
+  const lines=text.trim().split('\n');
+  const hdr=parseCSVLine(lines[0]);
+  return lines.slice(1).filter(l=>l.trim()).map(l=>{
+    const v=parseCSVLine(l),o={};
+    hdr.forEach((h,i)=>o[h.trim()]=(v[i]||'').trim());
+    return o;
   });
 }
-
-function renderStats() {
-  const scored = Object.keys(scores).length;
-  const total  = allRows.length;
-  const avg    = scored ? (Object.values(scores).reduce((a,b)=>a+(b.stars||0),0)/scored).toFixed(1) : '—';
-  document.getElementById('sb-scored').textContent = scored;
-  document.getElementById('sb-total').textContent  = total;
-  document.getElementById('sb-avg').textContent    = avg;
-  document.getElementById('sb-models').textContent = models.length;
+function loadCSV(evt){
+  const f=evt.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{
+    allRows=parseCSV(e.target.result);
+    scores={};
+    allRows.forEach((row,i)=>{
+      if(row.human_score)scores[i]={stars:parseFloat(row.human_score)||0,notes:row.human_notes||''};
+    });
+    models=[...new Set(allRows.map(r=>r.model_id))].filter(m=>m&&m.length<60&&!m.includes('\n'));
+    activeModel=models[0];sampleIdx=0;
+    const flagged=allRows.filter(r=>r.human_eval_sample==='True').length;
+    const st=document.getElementById('load-status');
+    st.textContent=`✓ ${allRows.length} rows · ${flagged} flagged for human eval`;
+    const lz=document.getElementById('load-zone');
+    lz.classList.add('loaded');
+    lz.innerHTML=`<div style="display:flex;align-items:center;gap:10px;justify-content:center;"><span style="font-size:16px">✅</span><span style="font-size:13px;font-weight:500;color:var(--green)">${allRows.length} rows loaded · ${flagged} flagged for human eval</span><button class="btn btn-sm" onclick="document.getElementById('csv-in').click()" style="margin-left:8px;">Change file</button></div>`;
+    lz.style.padding='14px 24px';
+    render();toast(`Loaded ${allRows.length} rows across ${models.length} models`);
+  };
+  r.readAsText(f);
 }
 
-function renderEval() {
-  const rows = modelRows(activeModel);
-  if (!rows.length) return;
-  const sample = rows[sampleIdx] || rows[0];
-  const ri     = sample._i;
+function modelRows(mid){
+  return allRows.map((r,i)=>({...r,_gi:i})).filter(r=>r.model_id===mid&&r.human_eval_sample==='True');
+}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function chipCls(v){const n=parseFloat(v);if(isNaN(n))return'chip-na';return n>=0.7?'chip-good':n>=0.4?'chip-mid':'chip-bad';}
+function toast(msg,dur=2200){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),dur);}
 
-  // dots
-  const dotsHtml = rows.map((r,i) =>
-    `<div class="dot ${scores[r._i]?.stars?'scored':''} ${i===sampleIdx?'current':''}"
-      onclick="sampleIdx=${i};render()"></div>`).join('');
+function render(){renderSidebar();renderEval();renderStats();}
 
-  // auto scores chips
-  const chipClass = v => !v ? '' : v >= 0.7 ? 'good' : v >= 0.4 ? 'mid' : 'bad';
-  const metrics   = ['faithfulness','answer_relevancy','context_precision','context_recall'];
-  const chipsHtml = metrics.map(m => {
-    const v = parseFloat(sample[m]);
-    return isNaN(v) ? '' :
-      `<span class="score-chip ${chipClass(v)}">${m.replace('_',' ')}: ${v.toFixed(2)}</span>`;
+function renderSidebar(){
+  const el=document.getElementById('model-list');el.innerHTML='';
+  models.forEach(mid=>{
+    const rows=modelRows(mid);
+    const done=rows.filter(r=>(scores[r._gi]?.stars||0)>0).length;
+    const pct=rows.length?Math.round(done/rows.length*100):0;
+    const s=allRows.find(r=>r.model_id===mid);
+    const tier=s?.model_tier||'mid';
+    const label=(s?.model_label||mid).split('(')[0].trim();
+    const div=document.createElement('div');
+    div.className='model-item'+(mid===activeModel?' active':'');
+    div.onclick=()=>{activeModel=mid;sampleIdx=0;render();};
+    div.innerHTML=`<div class="model-header"><div class="tier-dot tier-${tier}"></div><div class="model-label">${esc(label)}</div><div class="model-badge">${done}/${rows.length}</div></div><div class="model-prog"><div class="model-prog-fill" style="width:${pct}%"></div></div>`;
+    el.appendChild(div);
+  });
+}
+function renderStats(){
+  const flagged=allRows.filter(r=>r.human_eval_sample==='True');
+  const scored=Object.values(scores).filter(s=>s.stars>0).length;
+  const allS=Object.values(scores).map(s=>s.stars).filter(Boolean);
+  const avg=allS.length?(allS.reduce((a,b)=>a+b)/allS.length).toFixed(1):'—';
+  document.getElementById('sb-scored').textContent=scored;
+  document.getElementById('sb-total').textContent=flagged.length;
+  document.getElementById('sb-avg').textContent=avg;
+  document.getElementById('sb-models').textContent=models.length;
+}
+
+function renderEval(){
+  if(!allRows.length)return;
+  const rows=modelRows(activeModel);
+  if(!rows.length){
+    document.getElementById('eval-area').innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">No flagged samples for this model</div></div>';
+    return;
+  }
+  const si=Math.min(sampleIdx,rows.length-1);
+  const sample=rows[si];
+  const gi=sample._gi;
+  const cur=scores[gi]||{stars:0,notes:''};
+
+  // Parse contexts — handle JSON list, Python repr list, or plain text
+  let ctxList=[];
+  const rawCtx=(sample.contexts||'').trim();
+  if(rawCtx){
+    // Try JSON first
+    try{ const p=JSON.parse(rawCtx); ctxList=Array.isArray(p)?p.filter(Boolean):[String(p)]; }
+    catch{
+      // Try replacing Python single quotes then JSON parse
+      try{ const p=JSON.parse(rawCtx.replace(/'/g,'"')); ctxList=Array.isArray(p)?p.filter(Boolean):[String(p)]; }
+      catch{
+        // If wrapped in brackets, split on chunk boundaries
+        if(rawCtx.startsWith('[')){
+          ctxList=rawCtx.slice(1,-1).split(/(?<='),\s*(?=')/).map(s=>s.replace(/^['"]|['"]$/g,'').trim()).filter(Boolean);
+          if(!ctxList.length) ctxList=[rawCtx]; // fallback: show raw
+        } else {
+          ctxList=[rawCtx]; // plain text — show as single chunk
+        }
+      }
+    }
+  }
+
+  const metrics=[
+    {k:'faithfulness',l:'Faithfulness'},
+    {k:'answer_relevancy',l:'Relevancy'},
+    {k:'context_precision',l:'Ctx Precision'},
+    {k:'context_recall',l:'Ctx Recall'},
+  ];
+  const chipsHtml=metrics.map(m=>{
+    const v=parseFloat(sample[m.k]);
+    return`<span class="chip ${chipCls(sample[m.k])}">${m.l}: ${isNaN(v)?'—':v.toFixed(2)}</span>`;
   }).join('');
 
-  // stars
-  const cur = scores[ri] || { stars: 0, notes: '' };
-  const starsHtml = [1,2,3,4,5].map(n =>
-    `<span class="star ${n<=cur.stars?'lit':''}" onclick="setStar(${ri},${n})">★</span>`).join('');
+  const dotsHtml=rows.map((r,i)=>{
+    const s=scores[r._gi];
+    const cl=i===si?'current':s?.stars?'scored':'';
+    return`<div class="dot ${cl}" onclick="sampleIdx=${i};render()" title="${s?.stars?'★'+s.stars:'unrated'}">${i+1}</div>`;
+  }).join('');
 
-  document.getElementById('eval-area').innerHTML = `
-    <div class="model-tabs">
-      ${models.map(m => `<button class="tab ${m===activeModel?'active':''}" onclick="activeModel='${m}';sampleIdx=0;render()">${allRows.find(r=>r.model_id===m)?.model_label||m}</button>`).join('')}
-    </div>
+  const starsHtml=[1,2,3,4,5].map(n=>{
+    const lit=n<=cur.stars;
+    return`<button class="star-btn${lit?' lit':''}" id="s${gi}_${n}" onclick="setStar(${gi},${n})" onmouseenter="hov(${gi},${n})" onmouseleave="unhov(${gi})">★</button>`;
+  }).join('');
 
-    <div class="dots">${dotsHtml}</div>
+  const scoredN=rows.filter(r=>(scores[r._gi]?.stars||0)>0).length;
+  const rt=sample.response_time_s?`${sample.response_time_s}s`:'—';
+  const tok=sample.output_tokens||'—';
+
+  document.getElementById('eval-area').innerHTML=`
+    <div class="model-tabs">${models.map(m=>{
+      const lbl=(allRows.find(r=>r.model_id===m)?.model_label||m).split('(')[0].trim();
+      return`<button class="mtab${m===activeModel?' active':''}" onclick="activeModel='${m}';sampleIdx=0;render()">${esc(lbl)}</button>`;
+    }).join('')}</div>
+
+    <div class="dots-row">${dotsHtml}</div>
 
     <div class="card">
-      <div class="card-label">Question &nbsp;·&nbsp; ${sampleIdx+1} of ${rows.length}</div>
-      <div class="question-text">${esc(sample.question)}</div>
+      <div class="card-hdr">
+        <div class="card-title">Question &nbsp;·&nbsp; ${si+1} / ${rows.length}</div>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">sample #${esc(sample.sample_index)}</span>
+      </div>
+      <div class="card-body"><div class="question-text">${esc(sample.question)}</div></div>
     </div>
 
     <div class="card">
-      <div class="card-label">RAG Answer — <em>${esc(sample.model_label||sample.model_id)}</em></div>
-      <div class="answer-text">${esc(sample.answer)}</div>
-      <div style="margin-top:10px;">
-        <div class="card-label">Auto eval scores</div>
-        <div class="auto-scores">${chipsHtml || '<span style="color:var(--muted);font-size:11px;">none</span>'}</div>
+      <div class="card-hdr">
+        <div class="card-title">RAG Answer</div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${rt}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">${tok} tokens</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="answer-text">${esc(sample.answer)}</div>
+        <div class="chips">${chipsHtml}</div>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-label">Ground Truth</div>
-      <div class="ground-truth-text">${esc(sample.ground_truth)}</div>
+      <div class="card-hdr"><div class="card-title">Ground Truth</div></div>
+      <div class="card-body"><div class="gt-text">${esc(sample.ground_truth)}</div></div>
     </div>
 
     <div class="card">
-      <div class="card-label">Context (retrieved chunk)</div>
-      <div class="context-text">${esc(sample.contexts||'—')}</div>
+      <div class="card-hdr">
+        <div class="card-title">Retrieved Context</div>
+        <span style="font-size:10px;color:var(--text3)">${ctxList.length} chunk${ctxList.length!==1?'s':''}</span>
+      </div>
+      <div class="card-body">
+        <div class="chunks">${ctxList.map((c,i)=>`
+          <div class="chunk">
+            <div class="chunk-meta">
+              <span class="chunk-num">chunk ${i+1}</span>
+              ${sample.source?`<span class="chunk-src">${esc(sample.source)} · p.${esc(sample.page||'?')}</span>`:''}
+            </div>
+            <div class="chunk-body">${esc(c)}</div>
+          </div>`).join('')}
+        </div>
+      </div>
     </div>
 
-    <div class="card score-section">
-      <div class="score-label">Your score (1 = poor, 5 = excellent)</div>
-      <div class="star-row">${starsHtml}</div>
-      <textarea class="notes-input" id="notes-${ri}" placeholder="Optional notes…" onchange="setNotes(${ri},this.value)">${esc(cur.notes)}</textarea>
+    <div class="score-card${cur.stars>0?' has-score':''}" id="sc">
+      <div class="score-heading">Rate this response</div>
+      <div class="score-sub">Compare the answer to the ground truth. How accurate and complete is it?</div>
+      <div class="stars-wrap">
+        <div class="stars-row" id="sr_${gi}">${starsHtml}</div>
+      </div>
+      <div class="star-labels-row">
+        <span class="star-lbl">1 · Poor</span>
+        <span class="star-lbl">2 · Fair</span>
+        <span class="star-lbl">3 · OK</span>
+        <span class="star-lbl">4 · Good</span>
+        <span class="star-lbl">5 · Excellent</span>
+      </div>
+      <div class="score-confirm${cur.stars>0?' show':''}" id="sconf">
+        <span>✅</span>
+        <span class="score-confirm-text" id="sconf-txt">Rated ${cur.stars} star${cur.stars!==1?'s':''}</span>
+      </div>
+      <div class="notes-lbl">Notes (optional)</div>
+      <textarea class="notes" id="notes-in" placeholder="What did the model get right or wrong? Any observations…">${esc(cur.notes)}</textarea>
       <div class="nav-row">
-        <button class="btn" onclick="navSample(-1)" ${sampleIdx===0?'disabled':''}>← Prev</button>
-        <div class="sample-counter">${Object.keys(scores).filter(k=>modelRows(activeModel).some(r=>r._i==k)).length} / ${rows.length} scored</div>
-        <button class="btn primary" onclick="saveAndNext(${ri})">Save & Next →</button>
+        <button class="btn btn-sm" onclick="navSample(-1)" ${si===0?'disabled':''}>← Prev</button>
+        <div class="nav-ctr">${scoredN} / ${rows.length} scored</div>
+        <button class="btn btn-primary btn-sm" onclick="saveNext()">Save &amp; Next →</button>
       </div>
-    </div>
-  `;
+    </div>`;
 }
 
-function esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+// Star interactions — no full re-render, just DOM updates
+function setStar(gi,n){
+  if(!scores[gi])scores[gi]={stars:0,notes:''};
+  scores[gi].stars=n;
+  for(let i=1;i<=5;i++){
+    const el=document.getElementById(`s${gi}_${i}`);
+    if(el){el.classList.toggle('lit',i<=n);el.classList.remove('hov');}
+  }
+  const conf=document.getElementById('sconf');
+  const confTxt=document.getElementById('sconf-txt');
+  const sc=document.getElementById('sc');
+  if(conf)conf.classList.add('show');
+  if(confTxt)confTxt.textContent=`Rated ${n} star${n!==1?'s':''}`;
+  if(sc)sc.classList.add('has-score');
+  renderSidebar();renderStats();
 }
-
-function setStar(ri, n) {
-  if (!scores[ri]) scores[ri] = { stars: 0, notes: '' };
-  scores[ri].stars = n;
-  render();
+function hov(gi,n){
+  const cur=scores[gi]?.stars||0;
+  for(let i=1;i<=5;i++){
+    const el=document.getElementById(`s${gi}_${i}`);if(!el)continue;
+    el.classList.remove('hov');
+    if(i<=n&&i>cur)el.classList.add('hov');
+    el.classList.toggle('lit',i<=cur);
+  }
 }
-function setNotes(ri, val) {
-  if (!scores[ri]) scores[ri] = { stars: 0, notes: '' };
-  scores[ri].notes = val;
+function unhov(gi){
+  const cur=scores[gi]?.stars||0;
+  for(let i=1;i<=5;i++){
+    const el=document.getElementById(`s${gi}_${i}`);if(!el)continue;
+    el.classList.remove('hov');el.classList.toggle('lit',i<=cur);
+  }
 }
-function saveAndNext(ri) {
-  const el = document.getElementById(`notes-${ri}`);
-  if (el) setNotes(ri, el.value);
+function saveNext(){
+  const rows=modelRows(activeModel);
+  const si=Math.min(sampleIdx,rows.length-1);
+  const gi=rows[si]._gi;
+  const notesEl=document.getElementById('notes-in');
+  if(notesEl){if(!scores[gi])scores[gi]={stars:0,notes:''};scores[gi].notes=notesEl.value;}
+  if(!scores[gi]?.stars){toast('⚠ Please select a star rating first',2500);return;}
+  toast('Saved ✓');
   navSample(1);
 }
-function navSample(d) {
-  const rows = modelRows(activeModel);
-  sampleIdx  = Math.max(0, Math.min(rows.length-1, sampleIdx+d));
+function navSample(d){
+  const rows=modelRows(activeModel);
+  sampleIdx=Math.max(0,Math.min(rows.length-1,sampleIdx+d));
   render();
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
-// ── Summary ───────────────────────────────────────────────────────────────────
-function showSummary() {
-  const sa = document.getElementById('summary-area');
-  sa.style.display = 'block';
-
-  const autoMetrics = ['faithfulness','answer_relevancy','context_precision','context_recall'];
-  const rows = models.map(mid => {
-    const mrows  = modelRows(mid);
-    const label  = allRows.find(r=>r.model_id===mid)?.model_label || mid;
-    const tier   = allRows.find(r=>r.model_id===mid)?.model_tier  || 'mid';
-    const scored = mrows.filter(r=>scores[r._i]?.stars);
-    const humanAvg = scored.length ? (scored.reduce((a,r)=>a+(scores[r._i]?.stars||0),0)/scored.length).toFixed(2) : '—';
-    const cost   = mrows.reduce((a,r)=>a+parseFloat(r.cost_usd||0),0).toFixed(4);
-    const rt     = mrows.length ? (mrows.reduce((a,r)=>a+parseFloat(r.response_time_s||0),0)/mrows.length).toFixed(2) : '—';
-    const auto   = autoMetrics.map(m => {
-      const v = mrows.map(r=>parseFloat(r[m])).filter(v=>!isNaN(v));
-      return v.length ? (v.reduce((a,b)=>a+b,0)/v.length).toFixed(3) : '—';
+function showSummary(){
+  if(!allRows.length){toast('Load a CSV first');return;}
+  const autoKeys=['faithfulness','answer_relevancy','context_precision','context_recall'];
+  const rows=models.map(mid=>{
+    const mrows=modelRows(mid);
+    const all100=allRows.filter(r=>r.model_id===mid);
+    const label=allRows.find(r=>r.model_id===mid)?.model_label||mid;
+    const tier=allRows.find(r=>r.model_id===mid)?.model_tier||'mid';
+    const rated=mrows.filter(r=>(scores[r._gi]?.stars||0)>0);
+    const hAvg=rated.length?(rated.reduce((a,r)=>a+(scores[r._gi]?.stars||0),0)/rated.length).toFixed(2):'—';
+    const cost=all100.reduce((a,r)=>a+parseFloat(r.cost_usd||0),0).toFixed(4);
+    const rt=all100.length?(all100.reduce((a,r)=>a+parseFloat(r.response_time_s||0),0)/all100.length).toFixed(2):'—';
+    const auto=autoKeys.map(k=>{
+      const v=all100.map(r=>parseFloat(r[k])).filter(v=>!isNaN(v));
+      return v.length?(v.reduce((a,b)=>a+b)/v.length).toFixed(3):'—';
     });
-    return { mid, label, tier, humanAvg, cost, rt, auto, scored: scored.length, total: mrows.length };
+    return{label,tier,hAvg,cost,rt,auto,rated:rated.length,total:mrows.length};
   });
-
-  const tierBadge = t => `<span class="tier-badge badge-${t}">${t}</span>`;
-  sa.innerHTML = `
-    <div class="card-label" style="margin-bottom:16px;">Summary</div>
-    <table>
-      <thead>
-        <tr>
-          <th>Model</th><th>Tier</th><th>Human ★</th><th>Faithf.</th><th>Relev.</th><th>Ctx Prec.</th><th>Ctx Rec.</th><th>Avg RT</th><th>Total Cost</th><th>Scored</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows.map(r=>`<tr>
-          <td>${r.label}</td>
-          <td>${tierBadge(r.tier)}</td>
-          <td>${r.humanAvg}</td>
+  const tp=t=>`<span class="tp tp-${t||'mid'}">${t||'mid'}</span>`;
+  document.getElementById('summary-area').innerHTML=`
+    <div class="summary-wrap">
+      <div class="summary-title">Results Summary</div>
+      <table>
+        <thead><tr><th>Model</th><th>Tier</th><th>Human ★</th><th>Faithf.</th><th>Relev.</th><th>Ctx Prec.</th><th>Ctx Rec.</th><th>Avg RT</th><th>Cost</th><th>Rated</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr>
+          <td style="font-family:var(--sans);font-weight:500;">${esc(r.label)}</td>
+          <td>${tp(r.tier)}</td>
+          <td style="color:var(--amber);font-weight:600;">${r.hAvg}</td>
           <td>${r.auto[0]}</td><td>${r.auto[1]}</td><td>${r.auto[2]}</td><td>${r.auto[3]}</td>
-          <td>${r.rt}s</td>
-          <td>$${r.cost}</td>
-          <td>${r.scored}/${r.total}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table>
-  `;
+          <td>${r.rt}s</td><td>$${r.cost}</td><td>${r.rated}/${r.total}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
 }
 
-// ── Export ────────────────────────────────────────────────────────────────────
-function exportCSV() {
-  const cols = Object.keys(allRows[0]||{}).filter(k=>k!=='human_score'&&k!=='human_notes');
+function exportCSV(){
+  if(!allRows.length){toast('Load a CSV first');return;}
+  const cols=Object.keys(allRows[0]).filter(k=>k!=='human_score'&&k!=='human_notes');
   cols.push('human_score','human_notes');
-  const esc2 = v => `"${String(v||'').replace(/"/g,'""')}"`;
-  const lines = [cols.join(','), ...allRows.map((r,i) => {
-    const s = scores[i];
-    return cols.map(c => {
-      if (c==='human_score') return esc2(s?.stars||'');
-      if (c==='human_notes') return esc2(s?.notes||'');
-      return esc2(r[c]);
+  const e2=v=>`"${String(v||'').replace(/"/g,'""')}"`;
+  const lines=[cols.join(','),...allRows.map((r,i)=>{
+    const s=scores[i];
+    return cols.map(c=>{
+      if(c==='human_score')return e2(s?.stars||'');
+      if(c==='human_notes')return e2(s?.notes||'');
+      return e2(r[c]);
     }).join(',');
   })];
-  const csv = lines.join('\n');
-  document.getElementById('csv-preview').textContent = csv.slice(0,1500)+(csv.length>1500?'\n…':'');
-  document.getElementById('export-area').style.display = 'block';
-  window._exportCSV = csv;
+  window._csv=lines.join('\n');
+  document.getElementById('csv-pre').textContent=window._csv.slice(0,2000)+(window._csv.length>2000?'\n…':'');
+  document.getElementById('export-area').style.display='block';
   document.getElementById('export-area').scrollIntoView({behavior:'smooth'});
 }
-function copyExport()     { navigator.clipboard.writeText(window._exportCSV); }
-function downloadExport() {
-  const blob = new Blob([window._exportCSV],{type:'text/csv'});
-  const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
-  a.download = 'model_comparison_scored.csv';
-  a.click();
+function copyExport(){navigator.clipboard.writeText(window._csv);toast('Copied!');}
+function dlExport(){
+  const b=new Blob([window._csv],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='model_comparison_scored.csv';a.click();
+  toast('Downloaded!');
 }
 </script>
 </body>
