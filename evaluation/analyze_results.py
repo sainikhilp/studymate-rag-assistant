@@ -53,6 +53,16 @@ def load(path: str) -> pd.DataFrame:
     df = df[df["model_tier"].isin(TIER_ORDER)]
     for m in AUTO_METRICS:
         df[m] = pd.to_numeric(df[m], errors="coerce")
+
+    # ── Correct mislabelled tiers ──────────────────────────────────────────
+    TIER_REMAP = {
+        "gpt-4o":    "high",
+        "o1-mini":   "mid",
+        "gpt-4o-mini": "low",
+    }
+    df["model_tier"] = df["model_id"].str.lower().map(TIER_REMAP).fillna(df["model_tier"])
+    # ──────────────────────────────────────────────────────────────────────
+
     return df
 
 
