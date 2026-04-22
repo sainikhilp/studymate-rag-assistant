@@ -231,7 +231,7 @@ def main():
                 "answer_relevancy":   scores.get("answer_relevancy"),
                 "context_precision":  scores.get("context_precision"),
                 "context_recall":     scores.get("context_recall"),
-                # human eval — only flagged samples shown in the UI
+                "contexts":           json.dumps(context),   # JSON string — safe in CSV
                 "human_eval_sample":  is_human_sample,
                 "human_score":        None,
                 "human_notes":        None,
